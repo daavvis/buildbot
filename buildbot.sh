@@ -14,54 +14,44 @@
 #-------------------ROMS To Be Built------------------#
 # Instructions and examples below:
 
-
-# Please read through the top part of this bot and set the settings to match your device/computer
-
-# To start bot move to the folder it has been placed in and type ./buildbot.sh
-
-
-
 #PRODUCT[0]="m7vzw"			# phone model name (product folder name)
 #LUNCHCMD[0]="m7vzw"			# lunch command used for ROM
 
 
-#PRODUCT[1]="p3110"
-#LUNCHCMD[1]="p3110"
+LUNCHCMD[1]="p3110"
 
-#PRODUCT[2]="p3100"
+
 #LUNCHCMD[2]="p3100"
 
 
-#PRODUCT[3]="m7spr"
 #LUNCHCMD[3]="m7spr"
 
-#PRODUCT[4]="m7att"
+
 #LUNCHCMD[4]="m7att"
 
-#PRODUCT[5]="p5110"
+
 #LUNCHCMD[5]="p5110"
 
 
-#PRODUCT[6]="p5100"
 #LUNCHCMD[6]="p5100"
 
-#PRODUCT[7]="lt01lte"
+
 #LUNCHCMD[7]="lt01lte"
 
-#PRODUCT[8]="edison"
+
 #LUNCHCMD[8]="edison"
 
-PRODUCT[9]="lt013g"
-LUNCHCMD[9]="lt013g"
 
-PRODUCT[10]="lt01lte"
-LUNCHCMD[10]="lt01lte"
+#LUNCHCMD[9]="spyder"
 
-PRODUCT[11]="lt01wifi"
-LUNCHCMD[11]="lt01wifi"
 
-PRODUCT[12]="spyder"
-LUNCHCMD[12]="spyder"
+#LUNCHCMD[10]="lt013g"
+
+
+#LUNCHCMD[11]="lt01lte"
+
+
+#LUNCHCMD[12]="lt01wifi"
 
 
 #---------------------Build Settings------------------#
@@ -89,7 +79,7 @@ MOVE=y
 MD5=y
 
 # Do you want to move the Recovery.img after build is completed also?
-recov=y
+RECOV=y
 
 # Please fill in below the folder they should be moved to.
 # The "//" means root. if you are moving to an external HDD you should start with //media/your PC username/name of the storage device An example is below.
@@ -108,14 +98,14 @@ VER=4.4.2
 
 # The first few letters of your ROM name... this is needed to move the completed zip to your storage folder. 
 
-ROM=MK44
+ROM=UNOFFICIAL
 
 # Your build source code directory path. In the example below the build source code directory path is in the "home" folder. If your source code directory is on an external HDD it should look like: //media/your PC username/the name of your storage device/path/to/your/source/code/folder
 SAUCE=~/mkkk
 
 # REMOVE BUILD PROP (recomended for every build, otherwise the date of the build may not be changed, as well as other variables)
 
-BP=y
+BP=n
 
 
 # Number for the -j parameter (choose a smaller number for slower internet conection... default is usually 4... this only controls how many threads are running during repo sync)
@@ -187,7 +177,7 @@ if [ $CCACHE = "y" ]; then
 
 
 
-for VAL in "${!PRODUCT[@]}"
+for VAL in "${!LUNCHCMD[@]}"
 do
 
 echo -n "Starting build..."
@@ -199,7 +189,7 @@ lunch mk_${LUNCHCMD[$VAL]}-userdebug
 
 		if [ $BP = "y" ]; then
 		echo "Removing build.prop..."
-		rm $SAUCE/out/target/product/${PRODUCT[$VAL]}/system/build.prop
+		rm $SAUCE/out/target/product/${LUNCHCMD[$VAL]}/system/build.prop
 		echo "done!"
 		fi
 
@@ -233,19 +223,19 @@ echo "${bldgrn}Total time elapsed: ${txtrst}${grn}$(echo "($res2 - $res1) / 60"|
 		echo -n "checking for directory, and creating as needed..."
 			mkdir -p $STORAGE
 				if [ $AVF = "y" ]; then
-					mkdir -p $STORAGE/$VER
-					mkdir -p $STORAGE/$VER/${PRODUCT[$VAL]}
+					mkdir -p $STORAGE/$VER/${LUNCHCMD[$VAL]}
+					#mkdir -p $STORAGE/$VER/${LUNCHCMD[$VAL]}
 				fi
 				if [ $AVF = "n" ]; then
-					mkdir -p $STORAGE/${PRODUCT[$VAL]}
+					mkdir -p $STORAGE/${LUNCHCMD[$VAL]}
 				fi
 		echo "Done."
 		echo "Moving flashable zip..."
 				if [ $AVF = "y" ]; then
-					mv $SAUCE/out/target/product/${PRODUCT[$VAL]}/$ROM*".zip" $STORAGE/$VER/${PRODUCT[$VAL]}/
+					mv $SAUCE/out/target/product/${LUNCHCMD[$VAL]}/*$ROM*".zip" $STORAGE/$VER/${LUNCHCMD[$VAL]}/
 				fi
 				if [ $AVF = "n" ]; then
-					mv $SAUCE/out/target/product/${PRODUCT[$VAL]}/$ROM*".zip" $STORAGE/${PRODUCT[$VAL]}/
+					mv $SAUCE/out/target/product/${LUNCHCMD[$VAL]}/*$ROM*".zip" $STORAGE/${LUNCHCMD[$VAL]}/
 				fi
 		echo "Done."
 		fi
@@ -253,21 +243,21 @@ echo "${bldgrn}Total time elapsed: ${txtrst}${grn}$(echo "($res2 - $res1) / 60"|
 		if [ $MD5 = "y" ]; then
 		echo -n "Moving md5..."
 				if [ $AVF = "y" ]; then
-					mv $SAUCE/out/target/product/${PRODUCT[$VAL]}/*".md5sum" $STORAGE/$VER/${PRODUCT[$VAL]}/
+					mv $SAUCE/out/target/product/${LUNCHCMD[$VAL]}/*".md5sum" $STORAGE/$VER/${LUNCHCMD[$VAL]}/
 				fi
 				if [ $AVF = "n" ]; then
-					mv $SAUCE/out/target/product/${PRODUCT[$VAL]}/*".md5sum" $STORAGE/${PRODUCT[$VAL]}/
+					mv $SAUCE/out/target/product/${LUNCHCMD[$VAL]}/*".md5sum" $STORAGE/${LUNCHCMD[$VAL]}/
 				fi
 		echo "done."
 		fi
 
-		if [ $recov = "y" ]; then
+		if [ $RECOV = "y" ]; then
 		echo -n "Moving recovery.img..."
 				if [ $AVF = "y" ]; then
-					mv $SAUCE/out/target/product/${PRODUCT[$VAL]}/"recovery.img" $STORAGE/$VER/${PRODUCT[$VAL]}/
+					mv $SAUCE/out/target/product/${LUNCHCMD[$VAL]}/"recovery.img" $STORAGE/$VER/${LUNCHCMD[$VAL]}/
 				fi
 				if [ $AVF = "n" ]; then
-					mv $SAUCE/out/target/product/${PRODUCT[$VAL]}/"recovery.img" $STORAGE/${PRODUCT[$VAL]}/
+					mv $SAUCE/out/target/product/${LUNCHCMD[$VAL]}/"recovery.img" $STORAGE/${LUNCHCMD[$VAL]}/
 				fi
 		echo "done."
 		fi
@@ -278,7 +268,7 @@ done
 if  [ $FTP = "y" ]; then
 	echo "Initiating FTP connection..."
 
-	cd $STORAGE/ ${PRODUCT[$VAL]}
+	cd $STORAGE/ ${LUNCHCMD[$VAL]}
 	ATTACHROM=`for file in ${OUTPUTNME[$VAL]}$DATE".zip"; do echo -n -e "put ${file}\n"; done`
 	if [ $MD5 = "y" ]; then
 		ATTACHMD5=`for file in *"-"$DATE".md5sum.txt"; do echo -n -e "put ${file}\n"; done`
