@@ -13,6 +13,9 @@
 
 #-------------------ROMS To Be Built------------------#
 # Instructions and examples below:
+# Instructions and examples below:
+# Please read through the top part of this bot and set the settings to match your device/computer
+# To start bot move to the folder it has been placed in and type ./buildbot.sh
 
 #PRODUCT[0]="m7vzw"			# phone model name (product folder name)
 #LUNCHCMD[0]="m7vzw"			# lunch command used for ROM
@@ -96,7 +99,8 @@ AVF=y
 
 VER=4.4.2
 
-# The first few letters of your ROM name... this is needed to move the completed zip to your storage folder. 
+# Rom Type (UNNOFFICIAL/OFFICIAL/EXPERIMENTAL/RELEASE) This will not change the build,it is needed to move the completed zip to your storage folder.
+# This will almost always be 'UNOFFICIAL'. 
 
 ROM=UNOFFICIAL
 
@@ -169,11 +173,9 @@ if [ $CLEAN = "y" ]; then
 fi
 
 if [ $CCACHE = "y" ]; then
-			export USE_CCACHE=1
-			export CCACHE_DIR=$CCSTORAGE
-			# set ccache due to your disk space,set it at your own risk
-			prebuilts/misc/linux-x86/ccache/ccache -M 15G
-		fi
+	export USE_CCACHE=1
+	export CCACHE_DIR=$CCSTORAGE
+fi
 
 
 
@@ -224,7 +226,6 @@ echo "${bldgrn}Total time elapsed: ${txtrst}${grn}$(echo "($res2 - $res1) / 60"|
 			mkdir -p $STORAGE
 				if [ $AVF = "y" ]; then
 					mkdir -p $STORAGE/$VER/${LUNCHCMD[$VAL]}
-					#mkdir -p $STORAGE/$VER/${LUNCHCMD[$VAL]}
 				fi
 				if [ $AVF = "n" ]; then
 					mkdir -p $STORAGE/${LUNCHCMD[$VAL]}
