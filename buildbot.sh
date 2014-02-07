@@ -13,11 +13,7 @@
 
 #-------------------ROMS To Be Built------------------#
 # Instructions and examples below:
-# Instructions and examples below:
-# Please read through the top part of this bot and set the settings to match your device/computer
-# To start bot move to the folder it has been placed in and type ./buildbot.sh
 
-#PRODUCT[0]="m7vzw"			# phone model name (product folder name)
 #LUNCHCMD[0]="m7vzw"			# lunch command used for ROM
 
 
@@ -48,13 +44,13 @@ LUNCHCMD[1]="p3110"
 #LUNCHCMD[9]="spyder"
 
 
-#LUNCHCMD[10]="lt013g"
+LUNCHCMD[10]="lt013g"
 
 
-#LUNCHCMD[11]="lt01lte"
+LUNCHCMD[11]="lt01lte"
 
 
-#LUNCHCMD[12]="lt01wifi"
+LUNCHCMD[12]="lt01wifi"
 
 
 #---------------------Build Settings------------------#
@@ -99,8 +95,7 @@ AVF=y
 
 VER=4.4.2
 
-# Rom Type (UNNOFFICIAL/OFFICIAL/EXPERIMENTAL/RELEASE) This will not change the build,it is needed to move the completed zip to your storage folder.
-# This will almost always be 'UNOFFICIAL'. 
+# The first few letters of your ROM name... this is needed to move the completed zip to your storage folder. 
 
 ROM=UNOFFICIAL
 
@@ -109,7 +104,7 @@ SAUCE=~/mkkk
 
 # REMOVE BUILD PROP (recomended for every build, otherwise the date of the build may not be changed, as well as other variables)
 
-BP=n
+BP=y
 
 
 # Number for the -j parameter (choose a smaller number for slower internet conection... default is usually 4... this only controls how many threads are running during repo sync)
@@ -121,7 +116,7 @@ J=16
 SYNC=n
 
 # run mka installclean first (quick clean build)
-QCLEAN=n
+QCLEAN=y
 
 # Run make clean first (Slow clean build. Will delete entire contents of out folder...)
 
@@ -160,47 +155,47 @@ echo "done!"
 
 
 
-if [ $SYNC = "y" ]; then
-	echo -n "Running repo sync..."
-	repo sync -j$J
-	echo "done!"
-fi
+		if [ $SYNC = "y" ]; then
+			echo -n "Running repo sync..."
+			repo sync -j$J
+			echo "done!"
+		fi
 
-if [ $CLEAN = "y" ]; then
-	echo -n "Running make clean..."
-	make clean
-	echo "done!"
-fi
+		if [ $CLEAN = "y" ]; then
+			echo -n "Running make clean..."
+			make clean
+			echo "done!"
+		fi
 
-if [ $CCACHE = "y" ]; then
-	export USE_CCACHE=1
-	export CCACHE_DIR=$CCSTORAGE
-fi
+		if [ $CCACHE = "y" ]; then
+			export USE_CCACHE=1
+			export CCACHE_DIR=$CCSTORAGE
+		fi
 
 
 
 for VAL in "${!LUNCHCMD[@]}"
 do
 
-echo -n "Starting build..."
-. build/envsetup.sh
-croot
-lunch mk_${LUNCHCMD[$VAL]}-userdebug
+	echo -n "Starting build..."
+	. build/envsetup.sh
+	croot
+	lunch mk_${LUNCHCMD[$VAL]}-userdebug
 
 
 
 		if [ $BP = "y" ]; then
-		echo "Removing build.prop..."
-		rm $SAUCE/out/target/product/${LUNCHCMD[$VAL]}/system/build.prop
-		echo "done!"
+			echo "Removing build.prop..."
+			rm $SAUCE/out/target/product/${LUNCHCMD[$VAL]}/system/build.prop
+			echo "done!"
 		fi
 
 		
 		
 		if [ $QCLEAN = "y" ]; then
-		echo -n "Running make install clean..."
-		mka installclean
-		echo "done!"
+			echo -n "Running make install clean..."
+			mka installclean
+			echo "done!"
 		fi
 
 		
