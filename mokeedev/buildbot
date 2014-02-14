@@ -1,0 +1,455 @@
+#!/bin/bash
+
+# Copyright (C) 2014 The MoKee OpenSource Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# By daavvis lee_w
+# Inspired by Shane Faulkner
+# Find us all on XDA
+# BuildBot script for MoKee Unofficial Developer builds
+
+# Defaults
+MOVE=n
+STORAGE=
+SYNC=n
+BP=y
+CCACHE=
+QCLEAN=n
+CLEAN=n
+OTA=y
+FTP=n
+
+readonly red=$(tput setaf 1)             #  red
+readonly grn=$(tput setaf 2)             #  green
+readonly blu=$(tput setaf 4)             #  blue
+readonly cya=$(tput setaf 6)             #  cyan
+readonly txtbld=$(tput bold)             # Bold
+readonly bldred=${txtbld}$(tput setaf 1) #  red
+readonly bldgrn=${txtbld}$(tput setaf 2) #  green
+readonly bldblu=${txtbld}$(tput setaf 4) #  blue
+readonly bldcya=${txtbld}$(tput setaf 6) #  cyan
+readonly txtrst=$(tput sgr0)             # Reset
+
+function err {
+  echo "${txtrst}${bldred}$1${txtrst}" >&2
+}
+
+function askyn {
+  local question=$1
+  local default=$2
+  local prompt response default
+  case "$default" in
+    y|Y) prompt="${txtrst}$grn$question [Y/n]? ${txtrst}"; default="y";;
+    n|N) prompt="${txtrst}$grn$question [y/N]? ${txtrst}"; default="n";;
+     '') prompt="${txtrst}$grn$question [y/n]? ${txtrst}";;
+      *) echo "Error in script"; exit 1;;
+  esac
+
+  while :; do
+    read -n 1 -rp "$prompt" response
+    [[ -n $response ]] && echo >&2
+    if [[ $response =~ ^[Yy]([Ee][Ss])?$ ]]; then
+      [ -t 1 ] || echo y
+      return 0
+    elif [[ $response =~ ^[Nn]([Oo])?$ ]]; then
+      [ -t 1 ] || echo n
+      return 1
+    elif [[ -z $reponse && -n $default ]]; then
+      [ -t 1 ] || echo $default
+      [[ $default = y ]]
+      return $?
+    fi
+    err "Please press y or n"
+  done
+}
+
+function ask {
+  local question=$1
+  local default=$2
+  local response
+  read -rep "${txtrst}$grn$question ${txtrst}" -i "$default" response
+  if [[ -n $response ]]; then
+    echo "$response"
+    return 0
+  else
+    return 1
+  fi
+}
+  
+function demand {
+  local question=$1
+  local default=$2
+  local response
+  read -rep "${txtrst}$grn$question ${txtrst}" -i "$default" response
+  while [[ -z $response ]]; do
+    err "Please enter a value" 
+    read -rep "${txtrst}$grn$1 ${txtrst}" -i "$default" response
+  done
+  echo "$response"
+}
+
+function isIn {
+  for val in "${@:2}"; do
+    [[ $val = $1 ]] && return 0
+  done
+  return 1
+}
+
+
+function usage {
+  cat >&2 <<!EOD
+Usage: $(basename $0) [OPTIONS] device...
+Options:
+        -h, --help            this message
+        -Q, --quit            don't ask any questions
+        -m, --move=DIRECTORY  move built ROMs to DIRECTORY
+        -s, --sync            sync repos before building
+        -C, --ccache          enable ccache
+            --noccache        disable ccache
+        -q, --quickclean      run mka installclean before building (disables clean)
+        -c, --clean           run make clean before building (disables quickclean)
+            --keepbuildprop   don't delete build.prop
+            --noota           don't build OTA packages
+        -f, --ftp             upload to ftp server
+!EOD
+  echo $1
+}
+
+function checkArg {
+  if [[ -z $2 ]]; then
+    echo "$(basename $0): option requires an argument: $1" >&2
+    exit 1
+  fi
+}
+
+# The long way, in case getopt is missing or non-GNU
+
+while :; do
+  case $1 in
+          --help|-h|-\?) usage 0;;
+             --quiet|-Q) QUIET=y;;
+              -m|--move) MOVE=y; STORAGE=$2; checkArg $1 "$STORAGE"; shift;;
+               --move=*) MOVE=y; STORAGE=${1#*=}; checkArg "--move" "$STORAGE";;
+              --sync|-s) SYNC=y;;
+            --ccache|-C) CCACHE=y;;
+             --noccache) CCACHE=n;;
+        --quickclean|-q) CLEAN=n; QCLEAN=y;;
+             --clean|-c) QCLEAN=n; CLEAN=y;;
+        --keepbuildprop) BP=n;;
+                --noota) OTA=n;;
+                  --ftp) FTP=y;;
+                     --) shift; break;;
+                     -*) usage 1;;
+                      *) break;;
+  esac
+  shift
+done
+
+declare -a DEVICES=( $* )
+
+if [[ $QUIET != y ]]; then
+
+  until eval SAUCE=$(demand "${bldblu}Enter the path to your build source directory:" $SAUCE) && [[ -d $SAUCE/android ]]; do
+    err "$SAUCE doesn't exist"
+  done
+ 
+  declare -i i=${#DEVICES[*]}
+  if ((i == 0)); then
+    DEVICES[$((i++))]=$(demand "What device would you like to build?")
+  fi
+  echo "Device list: ${DEVICES[*]}"
+
+  while response=$(ask "What other device would you like to build [return if done]?"); do
+    if isIn "$response" "${DEVICES[@]}"; then
+      err "You already said $response"
+    else
+      DEVICES[$((i++))]="$response"
+    fi
+    echo "Device list: ${DEVICES[*]}"
+  done
+  echo "Final device list: ${DEVICES[*]}"
+
+  MOVE=$(askyn "Should the finished ROMS be moved to a storage folder" $MOVE)
+  if [[ $MOVE = y ]]; then
+    eval STORAGE=$(ask "Enter the path to your storage directory:" $STORAGE)
+    until [[ -d "$STORAGE" && -w "$STORAGE" ]]; do
+      if [[ ! -d "$STORAGE" ]]; then
+        askyn "Storage directory $STORAGE doesn't exit, mkdir" y && mkdir -p "$STORAGE" && break
+      else
+        err "Storage directory $STORAGE is not writable"
+      fi
+      STORAGE=$(ask "Enter the path to your storage directory:" $STORAGE)
+    done
+    # Canonicalize
+    STORAGE=$(cd "$STORAGE"; pwd -P)
+  fi
+
+  SYNC=$(askyn "Should we sync repositories before build" $SYNC)
+  	if [ "$SYNC" = "y" ]; then
+  J=$(ask "What -j value would you like to use? up to 16 for fast internet...)" $J)
+  	fi
+  CCACHE=$(askyn "Do you want to use ccache" ${CCACHE:-y})
+  BP=$(askyn "Do you want to remove build.prop before the build (recomended)" $BP)
+  QCLEAN=$(askyn "Do you want to run mka installclean first (quick clean build)" $QCLEAN)
+  CLEAN=$(askyn "Do you want to Run make clean first (slow clean build, will delete entire contents of out folder..." $CLEAN)
+  OTA=$(askyn "Do you want to make an ota Package" $OTA)
+  FTP=$(askyn "Do you want to upload the finnished product to download.mfunz.com?" "$FTP")
+else
+
+  if [[ $MOVE = y && ! -d $STORAGE ]]; then
+    err "Storage directory '$STORAGE' doesn't exist"
+    exit 2
+  fi
+
+fi
+
+cat <<!EOD
+MOVE=$MOVE
+STORAGE=$STORAGE
+SYNC=$SYNC
+CCACHE=$CCACHE
+J=$J
+BP=$BP
+QCLEAN=$QCLEAN
+CLEAN=$CLEAN
+OTA=$OTA
+FTP=$FTP
+DEVICES=${DEVICES[@]}
+!EOD
+#----------------------FTP Settings--------------------#
+
+	if [ $FTP = "y" ]; then
+
+# ftp username
+echo -e "$txtrst"
+echo -e "$red"
+read -e -p "What is your mokeedev.com username?" FTPUSER
+eval FTPUSER="$FTPUSER"
+
+# ftp password
+
+read -s -p "Enter Password:" FTPPASS
+eval FTPPASS="$FTPPASS"
+echo -e "$txtrst"
+	fi
+
+# ftp hostname (should not change)
+
+FTPHOST=mokeedev.com
+
+#---------------------Build Bot Code-------------------#
+# Very much not a good idea to change this unless you know what you are doing....
+# get time of startup
+
+DATE=`eval date +%y``eval date +%m``eval date +%d`
+TIMEST=$(date +%Y_%m_%d)
+echo -e "$txtrst"
+
+res1=$(date +%s.%N)
+
+echo -e "$txtrst"
+echo -e "$grn"
+echo ""
+echo "Moving to source directory..."
+cd "$SAUCE"
+echo ""
+echo "done!"
+echo ""
+echo -e "$txtrst"
+
+		if [ $SYNC = "y" ]; then
+			echo "Running repo sync..."
+			echo ""
+			echo -e "$txtrst"
+			repo sync -j$J
+			echo -e "$grn"
+			echo ""
+			echo "done!"
+			echo ""
+			echo -e "$txtrst"
+		fi
+
+		if [ $CLEAN = "y" ]; then
+			echo -e "$grn"
+			echo "Running make clean..."
+			echo ""
+			make clean
+			echo ""
+			echo "done!"
+			echo -e "$txtrst"
+		fi
+
+if [[ ${#DEVICES[@]} = 0 ]]; then
+  err "Nothing to build"
+fi
+
+
+cd "$SAUCE" || exit 3
+for DEVICE in "${DEVICES[@]}"; do
+
+echo -e "$txtrst"
+echo -e "$grn"
+echo "Building $DEVICE"
+echo -e "$txtrst"
+
+# leave alone
+
+ROFOLDER="$SAUCE"/"out"/"target"/"product"/"$DEVICE"
+OTFOLDER="$SAUCE"/"mokee"/"OTA"/"UNOFFICIAL"/"$DEVICE"
+OTMDFOLDER="$SAUCE"/"mokee"/"OTA"/"UNOFFICIAL"/"$DEVICE"/"md5"
+ROFTP="FULL"/"UNOFFICIAL"/"$DEVICE"/
+ROFTPMD5="FULL"/"UNOFFICIAL"/"$DEVICE"/"md5"/
+OTAFTP="OTA"/"UNOFFICIAL"/"$DEVICE"/
+OTAMD5="OTA"/"UNOFFICIAL"/"$DEVICE"/"md5"/
+OTABDIR="$SAUCE"/"mokee"/"FULL"/"UNOFFICIAL"/"$DEVICE"
+
+if [[ $CCACHE = y ]]; then
+  export USE_CCACHE=1
+elif [[ $CCACHE = n ]]; then
+  unset USE_CCACHE
+fi
+
+if [ "$OTA" = "y" ] && [ ! -d "$OTABDIR" ]; then
+mkdir -p "$OTABDIR"
+fi
+ 
+if [ "$OTA" = "y" ] && [ ! -e "$OTABDIR"/*".zip" ]; then
+	echo "There are no ROMS in "$OTABDIR"/"$DEVICE", you must add a prebuilt one to make an OTA Package..."
+	until eval USRSTR=$(demand "Enter the path to your old rom storage directory:" $USRSTR) && OLDROM=`ls -t "$USRSTR"/*".zip" | head -1` && cp "$OLDROM" "$OTABDIR"; do
+    err "THERE IS NO ROM IN THAT FOLDER!!!"
+  done
+fi
+
+. build/envsetup.sh
+croot
+lunch mk_"$DEVICE"-userdebug
+
+		if [ "$BP" = "y" ]; then
+		echo -e "$grn"
+		echo ""
+		echo "Removing build.prop..."
+		echo ""
+		rm "$SAUCE"/out/target/product/"$DEVICE"/system/build.prop
+		echo ""
+		echo "done!"
+		echo -e "$txtrst"
+		fi
+
+		if [ "$QCLEAN" = "y" ]; then
+		echo -e "$grn"
+		echo ""
+		echo "Running make install clean..."
+		echo ""
+		echo -e "$txtrst"
+		mka installclean
+		echo -e "$grn"
+		echo ""
+		echo "done!"
+		echo -e "$txtrst"
+		fi
+
+# start compilation
+
+mka bacon
+echo -e "$grn"
+echo "done!"
+echo -e "$txtrst"
+
+ROM=`ls -t "$ROFOLDER"/*".zip" | head -1`
+
+		if [ "$OTA" = "y" ]; then
+				echo -e "$txtrst"
+				echo -e "$bldgrn"
+				echo ""
+				echo "Copying ROM to OTA build Dir..."
+				cp "$ROM" "$OTABDIR"/
+				echo ""
+				echo "Done."
+				echo ""
+				echo "Creating OTA.zip"
+				echo ""
+				echo -e "$txtrst"
+					. build/envsetup.sh
+					export MK_OTA_INPUT="$SAUCE"/"mokee"/"FULL"
+					export MK_OTA_EXTRA="$SAUCE"/"mokee"/"OTA"
+						ota_all UNOFFICIAL "$DEVICE"
+				echo -e "$bldgrn"
+				echo ""
+				echo "Done."
+				echo ""
+				echo "cleaning up for next time"
+				echo ""
+					OLDRM=`ls -tr "$OTABDIR"/*".zip" | head -n 1`
+    					rm -rf "$OLDRM"
+    			echo ""
+				echo "Removed oldest Rom, Ready For Next Build..."
+				echo ""
+				echo "Done."
+				echo -e "$txtrst"
+		fi
+ROMMD=`ls -t "$ROFOLDER"/*".md5sum" | head -1`
+
+#------------------------------------------------------------FTP UPLOAD START----------------
+
+if  [ "$FTP" = "y" ]; then
+	echo -e "$txtrst"
+	echo -e "$bldgrn"
+	echo ""
+	echo "Uploading ROM, MD5SUM, and if you made an OTA package Them as well..."
+	echo ""
+		curl -v -T "$ROM" ftp://"$FTPUSER":"$FTPPASS"@"$FTPHOST"/"$ROFTP"
+		curl -v -T "$ROMMD" ftp://"$FTPUSER":"$FTPPASS"@"$FTPHOST"/"$ROFTPMD5"
+			if [ "$OTA" = "y" ] && [ "$OTAF" = "n" ]; then
+				OTAN=`ls -t "$OTFOLDER"/*".zip" | head -1`
+				OTAMD=`ls -t "$OTMDFOLDER"/*".md5sum" | head -1`
+				curl -v -T "$OTAN" ftp://"$FTPUSER":"$FTPPASS"@"$FTPHOST"/"$OTAFTP"
+				curl -v -T "$OTAMD" ftp://"$FTPUSER":"$FTPPASS"@"$FTPHOST"/"$OTAMD5"
+			fi
+	echo "Done."
+	echo -e "$txtrst"
+fi
+
+#------------------------------------------------------------FTP UPLOAD END----------------
+
+	if [ "$MOVE" = "y" ]; then
+		echo -e "$bldgrn"
+		echo ""
+		echo "Moving Things to Storage Directorys..."
+				mv "$ROM" "$STORAGE"/"$DEVICE"/ && mv "$ROMMD" "$STORAGE"/"$DEVICE"/"md5"/
+				if [ "$OTA" = "y" ]; then
+				OTAN=`ls -t "$OTFOLDER"/*".zip" | head -1`
+				OTAMD=`ls -t "$OTMDFOLDER"/*".md5sum" | head -1`
+				mv "$OTAN" "$STORAGE"/"$DEVICE"/"OTA"/ && mv "$OTAMD" "$STORAGE"/"$DEVICE"/"OTA"/"md5"/
+				echo "Done."
+				echo "Cleaning up..."
+				rm -rf "out"/"target"/"OTA"
+				echo ""
+				echo "Done."
+				echo ""
+			fi
+		echo -e "$txtrst"
+	fi
+echo -e "$txtrst"
+echo -e "$red"
+cd "$SAUCE"
+echo -e "$txtrst"
+done
+# finished? get elapsed time
+echo ""
+echo -e "$bldred"
+echo "ALL DONE..."
+echo -e "$txtrst"
+res2=$(date +%s.%N)
+echo "$bldgrnTotal time elapsed: "$txtrst"$grn$(echo "($res2 - $res1) / 60"|bc ) minutes ($(echo "$res2 - $res1"|bc ) seconds) "$txtrst""
