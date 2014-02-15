@@ -1,59 +1,58 @@
 #!/bin/bash
 
-# Copyright (C) 2014 The MoKee OpenSource Project
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
-# By daavvis lee_w
-# Inspired by Shane Faulkner
-# Find us all on XDA
-# BuildBot script for MoKee Unofficial Developer builds
-
 # Defaults
-MOVE=n
-STORAGE=
+SAUCE=~/mkkk
+MOVE=y
+STORAGE=/media/daavvis/storage/1foronlyme/4.4.2
 SYNC=n
+J=16
 BP=y
-CCACHE=
+CCACHE=y
 QCLEAN=n
 CLEAN=n
 OTA=y
 FTP=n
+FTPHOST=mokeedev.com
+FTPUSER=
+FTPPASS=
+FTPFULL=FULL/UNOFFICIAL
+FTPOTA=OTA/UNOFFICIAL
+DO=
 
-readonly red=$(tput setaf 1)             #  red
-readonly grn=$(tput setaf 2)             #  green
-readonly blu=$(tput setaf 4)             #  blue
-readonly cya=$(tput setaf 6)             #  cyan
-readonly txtbld=$(tput bold)             # Bold
-readonly bldred=${txtbld}$(tput setaf 1) #  red
-readonly bldgrn=${txtbld}$(tput setaf 2) #  green
-readonly bldblu=${txtbld}$(tput setaf 4) #  blue
-readonly bldcya=${txtbld}$(tput setaf 6) #  cyan
-readonly txtrst=$(tput sgr0)             # Reset
+readonly red=$(tput setaf 1) #  red
+readonly grn=$(tput setaf 2) #  green
+readonly ylw=$(tput setaf 3) #  yellow
+readonly blu=$(tput setaf 4) #  blue
+readonly cya=$(tput setaf 6) #  cyan
+readonly txtbld=$(tput bold) # Bold
+readonly bldred=$txtbld$red  #  red
+readonly bldgrn=$txtbld$grn  #  green
+readonly bldylw=$txtbld$ylw  #  yellow
+readonly bldblu=$txtbld$blu  #  blue
+readonly bldcya=$txtbld$cya  #  cyan
+readonly txtrst=$(tput sgr0) # Reset
 
 function err {
-  echo "${txtrst}${bldred}$1${txtrst}" >&2
+  echo "$txtrst${red}$*$txtrst" >&2
 }
+
+function warn {
+  echo "$txtrst${ylw}$*$txtrst" >&2
+}
+
+function info {
+  echo "$txtrst${grn}$*$txtrst"
+}
+
 
 function askyn {
   local question=$1
   local default=$2
-  local prompt response default
+  local prompt response
   case "$default" in
-    y|Y) prompt="${txtrst}$grn$question [Y/n]? ${txtrst}"; default="y";;
-    n|N) prompt="${txtrst}$grn$question [y/N]? ${txtrst}"; default="n";;
-     '') prompt="${txtrst}$grn$question [y/n]? ${txtrst}";;
+    y|Y) prompt="$txtrst$grn$question [Y/n]? $txtrst"; default="y";;
+    n|N) prompt="$txtrst$grn$question [y/N]? $txtrst"; default="n";;
+     '') prompt="$txtrst$grn$question [y/n]? $txtrst";;
       *) echo "Error in script"; exit 1;;
   esac
 
@@ -76,10 +75,13 @@ function askyn {
 }
 
 function ask {
+  local opt=
+  [[ $1 = -s ]] && opt="-s" && shift
   local question=$1
   local default=$2
   local response
-  read -rep "${txtrst}$grn$question ${txtrst}" -i "$default" response
+  read $opt -rep "$txtrst$grn$question $txtrst" -i "$default" response
+  [[ $opt = -s ]] && echo >&2
   if [[ -n $response ]]; then
     echo "$response"
     return 0
@@ -92,17 +94,17 @@ function demand {
   local question=$1
   local default=$2
   local response
-  read -rep "${txtrst}$grn$question ${txtrst}" -i "$default" response
+  read -rep "$txtrst$grn$question $txtrst" -i "$default" response
   while [[ -z $response ]]; do
     err "Please enter a value" 
-    read -rep "${txtrst}$grn$1 ${txtrst}" -i "$default" response
+    read -rep "$txtrst$grn$1 $txtrst" -i "$default" response
   done
   echo "$response"
 }
 
 function isIn {
   for val in "${@:2}"; do
-    [[ $val = $1 ]] && return 0
+    [[ $val = $1 ]] && return 0 
   done
   return 1
 }
@@ -113,18 +115,22 @@ function usage {
 Usage: $(basename $0) [OPTIONS] device...
 Options:
         -h, --help            this message
-        -Q, --quit            don't ask any questions
+        -g, --go              don't ask any questions, just do it
         -m, --move=DIRECTORY  move built ROMs to DIRECTORY
+        +m, --nomove          don't move ROMs
         -s, --sync            sync repos before building
+        +s, --nosync          don't sync repos before building
         -C, --ccache          enable ccache
-            --noccache        disable ccache
+        +C, --noccache        disable ccache
         -q, --quickclean      run mka installclean before building (disables clean)
+        +q, --noquickclean    don't mka installclean before building
         -c, --clean           run make clean before building (disables quickclean)
+        +c, --noclean         don't make clean before building
             --keepbuildprop   don't delete build.prop
             --noota           don't build OTA packages
-        -f, --ftp             upload to ftp server
+        -X                    debug (doesn't actually build anything)
 !EOD
-  echo $1
+  exit $1
 }
 
 function checkArg {
@@ -135,31 +141,36 @@ function checkArg {
 }
 
 # The long way, in case getopt is missing or non-GNU
-
 while :; do
   case $1 in
           --help|-h|-\?) usage 0;;
-             --quiet|-Q) QUIET=y;;
-              -m|--move) MOVE=y; STORAGE=$2; checkArg $1 "$STORAGE"; shift;;
+                --go|-g) GO=y;;
+              --move|-m) MOVE=y; STORAGE=$2; checkArg $1 "$STORAGE"; shift;;
                --move=*) MOVE=y; STORAGE=${1#*=}; checkArg "--move" "$STORAGE";;
+            --nomove|+m) MOVE=n;;
               --sync|-s) SYNC=y;;
+            --nosync|+s) SYNC=n;;
             --ccache|-C) CCACHE=y;;
-             --noccache) CCACHE=n;;
+          --noccache|+C) CCACHE=n;;
         --quickclean|-q) CLEAN=n; QCLEAN=y;;
+      --noquickclean|+q) QCLEAN=n;;
              --clean|-c) QCLEAN=n; CLEAN=y;;
+           --noclean|+c) CLEAN=n;;
         --keepbuildprop) BP=n;;
                 --noota) OTA=n;;
-                  --ftp) FTP=y;;
+                     -X) DO="echo $txtrst${cya}Would: ";;
                      --) shift; break;;
-                     -*) usage 1;;
+                  -*|+*) usage 1;;
                       *) break;;
   esac
   shift
 done
 
-declare -a DEVICES=( $* )
+if [[ $# > 0 ]]; then
+  DEVICES=( $* )
+fi
 
-if [[ $QUIET != y ]]; then
+if [[ $GO != y ]]; then
 
   until eval SAUCE=$(demand "${bldblu}Enter the path to your build source directory:" $SAUCE) && [[ -d $SAUCE/android ]]; do
     err "$SAUCE doesn't exist"
@@ -181,32 +192,52 @@ if [[ $QUIET != y ]]; then
   done
   echo "Final device list: ${DEVICES[*]}"
 
-  MOVE=$(askyn "Should the finished ROMS be moved to a storage folder" $MOVE)
-  if [[ $MOVE = y ]]; then
-    eval STORAGE=$(ask "Enter the path to your storage directory:" $STORAGE)
-    until [[ -d "$STORAGE" && -w "$STORAGE" ]]; do
-      if [[ ! -d "$STORAGE" ]]; then
-        askyn "Storage directory $STORAGE doesn't exit, mkdir" y && mkdir -p "$STORAGE" && break
-      else
-        err "Storage directory $STORAGE is not writable"
+  while :; do
+    if MOVE=$(askyn "Should the finished ROMS be moved to a storage folder" $MOVE); then
+      eval STORAGE=$(ask "Enter the path to your storage directory [blank cancels]:" $STORAGE)
+      until [[ ! $STORAGE || ( -d "$STORAGE" && -w "$STORAGE" ) ]]; do
+        if [[ ! -d "$STORAGE" ]]; then
+          askyn "Storage directory $STORAGE doesn't exit, mkdir" y && mkdir -p "$STORAGE" && break
+        else
+          err "Storage directory $STORAGE is not writable"
+        fi
+        STORAGE=$(ask "Enter the path to your storage directory [blank cancels]:" $STORAGE)
+      done
+
+      if [[ $STORAGE ]]; then
+        # Canonicalize
+        STORAGE=$(cd "$STORAGE"; pwd -P)
+        break
       fi
-      STORAGE=$(ask "Enter the path to your storage directory:" $STORAGE)
-    done
-    # Canonicalize
-    STORAGE=$(cd "$STORAGE"; pwd -P)
-  fi
+    else
+      break
+    fi
+  done
 
   SYNC=$(askyn "Should we sync repositories before build" $SYNC)
-  	if [ "$SYNC" = "y" ]; then
-  J=$(ask "What -j value would you like to use? up to 16 for fast internet...)" $J)
-  	fi
+	if [ "$SYNC" = "y" ]; then
+		J=$(ask "what -j level should we use? 1 for slow internet 16 for fast..." $J)
+	fi
   CCACHE=$(askyn "Do you want to use ccache" ${CCACHE:-y})
   BP=$(askyn "Do you want to remove build.prop before the build (recomended)" $BP)
   QCLEAN=$(askyn "Do you want to run mka installclean first (quick clean build)" $QCLEAN)
-  CLEAN=$(askyn "Do you want to Run make clean first (slow clean build, will delete entire contents of out folder..." $CLEAN)
-  OTA=$(askyn "Do you want to make an ota Package" $OTA)
-  FTP=$(askyn "Do you want to upload the finnished product to download.mfunz.com?" "$FTP")
-else
+  CLEAN=$(askyn "Do you want to run make clean first (slow clean build, will delete entire contents of out folder..." $CLEAN)
+  OTA=$(askyn "Do you want to make an ota package" $OTA)
+
+  while :; do
+    if FTP=$(askyn "Do you want to enable FTP uploading" $FTP); then
+          FTPUSER=$(ask "What is your mokeedev.com username:" $FTPUSER)
+          FTPPASS=$(ask -s "What is your mokeedev.com password:" $FTPPASS)
+          FTPUSERPASS="$FTPUSER:$FTPPASS@"
+          info "Checking access to $FTPHOST"
+          if curl -# ftp://$FTPUSERPASS$FTPHOST/ >/dev/null; then
+            info "Success!"
+            break
+          fi
+    else
+      break
+   fi
+   done
 
   if [[ $MOVE = y && ! -d $STORAGE ]]; then
     err "Storage directory '$STORAGE' doesn't exist"
@@ -219,101 +250,65 @@ cat <<!EOD
 MOVE=$MOVE
 STORAGE=$STORAGE
 SYNC=$SYNC
-CCACHE=$CCACHE
 J=$J
+CCACHE=$CCACHE
 BP=$BP
 QCLEAN=$QCLEAN
 CLEAN=$CLEAN
 OTA=$OTA
-FTP=$FTP
-DEVICES=${DEVICES[@]}
+DEVICES=${DEVICES[@]}"
 !EOD
-#----------------------FTP Settings--------------------#
-
-	if [ $FTP = "y" ]; then
-
-# ftp username
-echo -e "$txtrst"
-echo -e "$red"
-read -e -p "What is your mokeedev.com username?" FTPUSER
-eval FTPUSER="$FTPUSER"
-
-# ftp password
-
-read -s -p "Enter Password:" FTPPASS
-eval FTPPASS="$FTPPASS"
-echo -e "$txtrst"
-	fi
-
-# ftp hostname (should not change)
-
-FTPHOST=mokeedev.com
-
-#---------------------Build Bot Code-------------------#
-# Very much not a good idea to change this unless you know what you are doing....
-# get time of startup
-
-DATE=`eval date +%y``eval date +%m``eval date +%d`
-TIMEST=$(date +%Y_%m_%d)
-echo -e "$txtrst"
-
-res1=$(date +%s.%N)
-
-echo -e "$txtrst"
-echo -e "$grn"
-echo ""
-echo "Moving to source directory..."
-cd "$SAUCE"
-echo ""
-echo "done!"
-echo ""
-echo -e "$txtrst"
-
-		if [ $SYNC = "y" ]; then
-			echo "Running repo sync..."
-			echo ""
-			echo -e "$txtrst"
-			repo sync -j$J
-			echo -e "$grn"
-			echo ""
-			echo "done!"
-			echo ""
-			echo -e "$txtrst"
-		fi
-
-		if [ $CLEAN = "y" ]; then
-			echo -e "$grn"
-			echo "Running make clean..."
-			echo ""
-			make clean
-			echo ""
-			echo "done!"
-			echo -e "$txtrst"
-		fi
 
 if [[ ${#DEVICES[@]} = 0 ]]; then
   err "Nothing to build"
 fi
 
+  for DEVICE in "${DEVICES[@]}"; do
+    
+OTABDIR=$SAUCE/mokee/FULL/UNOFFICIAL/$DEVICE
+
+	if [[ $OTA = y && ! -d $OTABDIR ]];then
+		OTASU=$(askyn "NO OTA BUILD FOLDER FOUND, DO YOU WANT ME TO SET IT UP?" $OTASU1)
+		if [ "$OTASU1" = "y" ]; then
+			err "SETTING UP BUILD FOLDER"
+			mkdir $OTABDIR
+			OTAF=n
+		else
+			err "NOT BUILDING OTA"
+			OTAF=y
+		fi		
+	fi
+
+	while :; do
+	if [ $OTA = y ] && [ "$OTAF" = "n" ] && [ ! -e "$OTABDIR"/*".zip" ]; then
+		err "NO OLD ROM FOUND IN OTA BUILD FOLDER..."
+		OTASU=$(askyn "Do you want to set up to make an ota package" $OTASU)
+			if [ "$OTASU" = "y" ]; then
+			eval USRSTR=$(ask "Enter the path to your old rom storage directory [blank cancels]:" $USRSTR)
+      			until [[ ! $USRSTR || ( -d "$USRSTR" && -w "$USRSTR" ) ]]; do
+        			if [[ ! -d "$USRSTR" ]]; then
+          			err "$USRSTR DOES NOT EXIST!!"
+        			else
+          			err "Storage directory $USRSTR is not writable"
+        			fi
+        			$USRSTR=$(ask "Enter the path to your storage directory [blank cancels]:" $USRSTR)
+     			done
+				if [[ $USRSTR ]]; then
+        			OLDROM=$(ls -t $USRSTR/*".zip" | head -1)
+				cp $OLDROM $OTABDIR
+				OTAF=n
+        			break
+      				fi
+    			else
+			err "NOT BUILDING OTA PACKAGE!!"
+			OTAF=y
+      			break
+			fi
+    	fi
+  	done
 
 cd "$SAUCE" || exit 3
-for DEVICE in "${DEVICES[@]}"; do
 
-echo -e "$txtrst"
-echo -e "$grn"
-echo "Building $DEVICE"
-echo -e "$txtrst"
-
-# leave alone
-
-ROFOLDER="$SAUCE"/"out"/"target"/"product"/"$DEVICE"
-OTFOLDER="$SAUCE"/"mokee"/"OTA"/"UNOFFICIAL"/"$DEVICE"
-OTMDFOLDER="$SAUCE"/"mokee"/"OTA"/"UNOFFICIAL"/"$DEVICE"/"md5"
-ROFTP="FULL"/"UNOFFICIAL"/"$DEVICE"/
-ROFTPMD5="FULL"/"UNOFFICIAL"/"$DEVICE"/"md5"/
-OTAFTP="OTA"/"UNOFFICIAL"/"$DEVICE"/
-OTAMD5="OTA"/"UNOFFICIAL"/"$DEVICE"/"md5"/
-OTABDIR="$SAUCE"/"mokee"/"FULL"/"UNOFFICIAL"/"$DEVICE"
 
 if [[ $CCACHE = y ]]; then
   export USE_CCACHE=1
@@ -321,135 +316,98 @@ elif [[ $CCACHE = n ]]; then
   unset USE_CCACHE
 fi
 
-if [ "$OTA" = "y" ] && [ ! -d "$OTABDIR" ]; then
-mkdir -p "$OTABDIR"
-fi
- 
-if [ "$OTA" = "y" ] && [ ! -e "$OTABDIR"/*".zip" ]; then
-	echo "There are no ROMS in "$OTABDIR"/"$DEVICE", you must add a prebuilt one to make an OTA Package..."
-	until eval USRSTR=$(demand "Enter the path to your old rom storage directory:" $USRSTR) && OLDROM=`ls -t "$USRSTR"/*".zip" | head -1` && cp "$OLDROM" "$OTABDIR"; do
-    err "THERE IS NO ROM IN THAT FOLDER!!!"
-  done
+if [ $SYNC = y ]; then
+  info "Running repo sync..."
+  repo sync -j$J
 fi
 
+if [ $CLEAN = y ]; then
+  info "Running make clean..."
+  make clean
+fi
+
+TST=$(date +%s)
+DST=$(date +%s)
+
+  info "Building $DEVICE"
+cd $SAUCE
 . build/envsetup.sh
 croot
-lunch mk_"$DEVICE"-userdebug
+lunch mk_${DEVICE}-userdebug
+  ROMFOLDER=$SAUCE/out/target/product/$DEVICE
+  OTABDIR=$SAUCE/mokee/FULL/UNOFFICIAL/$DEVICE
+  OTAFOLDER=$SAUCE/mokee/OTA/UNOFFICIAL/$DEVICE
 
-		if [ "$BP" = "y" ]; then
-		echo -e "$grn"
-		echo ""
-		echo "Removing build.prop..."
-		echo ""
-		rm "$SAUCE"/out/target/product/"$DEVICE"/system/build.prop
-		echo ""
-		echo "done!"
-		echo -e "$txtrst"
-		fi
+  if [ $BP = y ]; then
+    info "Removing build.prop"
+    $DO rm -f out/target/product/$DEVICE/system/build.prop
+  fi
 
-		if [ "$QCLEAN" = "y" ]; then
-		echo -e "$grn"
-		echo ""
-		echo "Running make install clean..."
-		echo ""
-		echo -e "$txtrst"
-		mka installclean
-		echo -e "$grn"
-		echo ""
-		echo "done!"
-		echo -e "$txtrst"
-		fi
+  if [ $QCLEAN = y ]; then
+    info "Running mka installclean..."
+    $DO mka installclean
+  fi
 
-# start compilation
+  info "Running mka bacon..."
+  $DO mka bacon
 
-mka bacon
-echo -e "$grn"
-echo "done!"
-echo -e "$txtrst"
+  ROM=$(ls $ROMFOLDER/*.zip | head -1)
+  ROMMD=$ROM.md5sum
 
-ROM=`ls -t "$ROFOLDER"/*".zip" | head -1`
+  if [ $OTA = y ] && [ "$OTAF" = "n" ]; then
+    if [ -f $OTABDIR/*.zip ]; then
+      info "Copying ROM to OTA build dir..."
+      $DO cp $ROM $OTABDIR
 
-		if [ "$OTA" = "y" ]; then
-				echo -e "$txtrst"
-				echo -e "$bldgrn"
-				echo ""
-				echo "Copying ROM to OTA build Dir..."
-				cp "$ROM" "$OTABDIR"/
-				echo ""
-				echo "Done."
-				echo ""
-				echo "Creating OTA.zip"
-				echo ""
-				echo -e "$txtrst"
-					. build/envsetup.sh
-					export MK_OTA_INPUT="$SAUCE"/"mokee"/"FULL"
-					export MK_OTA_EXTRA="$SAUCE"/"mokee"/"OTA"
-						ota_all UNOFFICIAL "$DEVICE"
-				echo -e "$bldgrn"
-				echo ""
-				echo "Done."
-				echo ""
-				echo "cleaning up for next time"
-				echo ""
-					OLDRM=`ls -tr "$OTABDIR"/*".zip" | head -n 1`
-    					rm -rf "$OLDRM"
-    			echo ""
-				echo "Removed oldest Rom, Ready For Next Build..."
-				echo ""
-				echo "Done."
-				echo -e "$txtrst"
-		fi
-ROMMD=`ls -t "$ROFOLDER"/*".md5sum" | head -1`
+      info "Creating OTA.zip..."
+      export MK_OTA_INPUT=$SAUCE/mokee/FULL
+      export MK_OTA_EXTRA=$SAUCE/mokee/OTA
+      $DO ota_all UNOFFICIAL $DEVICE
 
-#------------------------------------------------------------FTP UPLOAD START----------------
+      info "Cleaning up..."
+      OLDROMS=$(ls $OTABDIR/*.zip | tail -n +2 2>/dev/null)
+      if [[ $OLDROMS ]]; then
+        $DO rm $OLDROMS
+      fi
 
-if  [ "$FTP" = "y" ]; then
-	echo -e "$txtrst"
-	echo -e "$bldgrn"
-	echo ""
-	echo "Uploading ROM, MD5SUM, and if you made an OTA package Them as well..."
-	echo ""
-		curl -v -T "$ROM" ftp://"$FTPUSER":"$FTPPASS"@"$FTPHOST"/"$ROFTP"
-		curl -v -T "$ROMMD" ftp://"$FTPUSER":"$FTPPASS"@"$FTPHOST"/"$ROFTPMD5"
-			if [ "$OTA" = "y" ] && [ "$OTAF" = "n" ]; then
-				OTAN=`ls -t "$OTFOLDER"/*".zip" | head -1`
-				OTAMD=`ls -t "$OTMDFOLDER"/*".md5sum" | head -1`
-				curl -v -T "$OTAN" ftp://"$FTPUSER":"$FTPPASS"@"$FTPHOST"/"$OTAFTP"
-				curl -v -T "$OTAMD" ftp://"$FTPUSER":"$FTPPASS"@"$FTPHOST"/"$OTAMD5"
-			fi
-	echo "Done."
-	echo -e "$txtrst"
-fi
+      OTAN=$(ls -t $OTAFOLDER/*".zip" | head -1)
+      OTAMD=$(dirname "$OTAN")/md5/$(basename "$OTAN").md5sum
+    else
+      warn "No existing ROM to build OTA package, just copying ROM for next time"
+      $DO cp $ROM $OTABDIR
+      OTAF=y
+    fi
+  fi
 
-#------------------------------------------------------------FTP UPLOAD END----------------
+  if [ $FTP = y ]; then
+    info "Uploading ROM, MD5SUM and, if you made an OTA package, that as well..."
+    $DO curl -v -T $ROM ftp://$FTPUSERPASS$FTPHOST/$FTPFULL/$DEVICE/
+    $DO curl -v -T $ROMMD ftp://$FTPUSERPASS$FTPHOST/$FTPFULL/$DEVICE/md5/
 
-	if [ "$MOVE" = "y" ]; then
-		echo -e "$bldgrn"
-		echo ""
-		echo "Moving Things to Storage Directorys..."
-				mv "$ROM" "$STORAGE"/"$DEVICE"/ && mv "$ROMMD" "$STORAGE"/"$DEVICE"/"md5"/
-				if [ "$OTA" = "y" ]; then
-				OTAN=`ls -t "$OTFOLDER"/*".zip" | head -1`
-				OTAMD=`ls -t "$OTMDFOLDER"/*".md5sum" | head -1`
-				mv "$OTAN" "$STORAGE"/"$DEVICE"/"OTA"/ && mv "$OTAMD" "$STORAGE"/"$DEVICE"/"OTA"/"md5"/
-				echo "Done."
-				echo "Cleaning up..."
-				rm -rf "out"/"target"/"OTA"
-				echo ""
-				echo "Done."
-				echo ""
-			fi
-		echo -e "$txtrst"
-	fi
-echo -e "$txtrst"
-echo -e "$red"
-cd "$SAUCE"
-echo -e "$txtrst"
+    if [ $OTA = y ] && [ "$OTAF" = "n" ]; then
+      $DO curl -v -T $OTAN ftp://$FTPUSERPASS$FTPHOST/$FTPOTA/$DEVICE/
+      $DO curl -v -T $OTAMD ftp://$FTPUSERPASS$FTPHOST/$FTPOTA/$DEVICE/md5/
+    fi
+  fi
+
+ 
+  if [ $MOVE = y ]; then
+    info "Moving things to $STORAGE directory"
+    $DO mkdir -p $STORAGE/$DEVICE/md5 &&
+    $DO mv $ROM $STORAGE/$DEVICE &&
+    $DO mv $ROMMD $STORAGE/$DEVICE/md5
+
+    if [[ $OTA = y && $OTAF = n ]]; then
+      $DO mkdir -p $STORAGE/$DEVICE/OTA/md5 &&
+      $DO mv $OTAN $STORAGE/$DEVICE/OTA &&
+      $DO mv $OTAMD $STORAGE/$DEVICE/OTA/md5
+
+      $DO rm -rf out/target/OTA
+    fi
+  fi
+
+  DET=$(date +%s)
+  info "Done building $DEVICE in $(((DET-DST)/60)) minutes $(((DET-DST)%60)) seconds"
 done
-# finished? get elapsed time
-echo ""
-echo -e "$bldred"
-echo "ALL DONE..."
-echo -e "$txtrst"
-res2=$(date +%s.%N)
-echo "$bldgrnTotal time elapsed: "$txtrst"$grn$(echo "($res2 - $res1) / 60"|bc ) minutes ($(echo "$res2 - $res1"|bc ) seconds) "$txtrst""
+TET=$(date +%s)
+info "All done in $(((TET-TST)/60)) minutes $(((TET-TST)%60)) seconds"
