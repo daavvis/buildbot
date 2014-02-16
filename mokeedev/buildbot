@@ -17,6 +17,19 @@
 # by daavvis and lee_w via xda
 # inspired by Shane Faulkner
 
+clear
+
+clear
+echo ""
+echo "  ||\   /||        ||  /"
+echo "  || \ / ||  ====  || /  =====  ====="
+echo "  ||     || ||  || || \  ||--   ||--"
+echo "  ||     ||  ====  ||  \ =====  ====="
+echo ""
+echo "                            opensource"
+echo "" 
+echo ""
+
 # Defaults
 SAUCE=~/mkkk
 MOVE=y
@@ -175,7 +188,7 @@ while :; do
            --noclean|+c) CLEAN=n;;
         --keepbuildprop) BP=n;;
                 --noota) OTA=n;;
-                     -X) DO="echo $txtrst${cya} EXECUTING: ";;
+                     -X) DO= echo "$txtrst${cya} EXECUTING";;
                      --) shift; break;;
                   -*|+*) usage 1;;
                       *) break;;
@@ -267,12 +280,12 @@ cat <<!EOD
 MOVE=$MOVE
 STORAGE=$STORAGE
 SYNC=$SYNC
-J=$J
 CCACHE=$CCACHE
 BP=$BP
 QCLEAN=$QCLEAN
 CLEAN=$CLEAN
 OTA=$OTA
+FTP=$FTP
 DEVICES=${DEVICES[@]}"
 !EOD
 
@@ -286,6 +299,16 @@ TST=$(date +%s)
 DST=$(date +%s)
     
 OTABDIR=$SAUCE/mokee/FULL/UNOFFICIAL/$DEVICE
+
+if [ "$SYNC" = y ]; then
+  info "Running repo sync..."
+    repo sync -j"$J"
+fi
+
+if [ "$CLEAN" = y ]; then
+  info "Running make clean..."
+    make clean
+fi
 
 	if [ "$OTA" = "y" ] && [ ! -f "$OTABDIR"/*".zip" ];then
 		OTASU1=$(askyn "YOU ARE NOT SET UP FOR OTA BUILDS, DO YOU WANT ME TO SET IT UP?" "$OTASU1")
@@ -313,6 +336,9 @@ OTABDIR=$SAUCE/mokee/FULL/UNOFFICIAL/$DEVICE
 		break
 		done
     	fi
+	if [ "$OTA" = "y" ] && [ -f "$OTABDIR"/*".zip" ];then
+		OTAF=n
+	fi
 
 cd "$SAUCE" || exit 3
 
@@ -323,21 +349,11 @@ elif [[ "$CCACHE" = n ]]; then
   unset USE_CCACHE
 fi
 
-if [ "$SYNC" = y ]; then
-  info "Running repo sync..."
-  "$DO" repo sync -j"$J"
-fi
-
-if [ "$CLEAN" = y ]; then
-  info "Running make clean..."
-  "$DO" make clean
-fi
-
   info "Building "$DEVICE""
 cd "$SAUCE"
-"$DO". build/envsetup.sh
-"$DO"croot
-"$DO"lunch mk_"${DEVICE}"-userdebug
+ . build/envsetup.sh
+ croot
+ lunch mk_"${DEVICE}"-userdebug
   ROMFOLDER="$SAUCE"/out/target/product/"$DEVICE"
   OTABDIR="$SAUCE"/mokee/FULL/UNOFFICIAL/"$DEVICE"
   OTAFOLDER="$SAUCE"/mokee/OTA/UNOFFICIAL/"$DEVICE"
@@ -349,63 +365,58 @@ cd "$SAUCE"
 
   if [ "$QCLEAN" = y ]; then
     info "Running mka installclean..."
-    mka installclean
+     mka installclean
   fi
 
   info "Running mka bacon..."
-   mka bacon
+    mka bacon
 
-  ROM=$(ls -t "$ROMFOLDER"/*"$DEVICE"*"UNOFFICIAL"*".zip" | head -1)
+  ROM=$(ls -t "$ROMFOLDER"/*"$DEVICE"*"UNOFFICIAL.zip" | head -1)
   ROMMD="$ROM".md5sum
 
   if [ "$OTA" = y ] && [ "$OTAF" = "n" ]; then
-    if [ -f "$OTABDIR"/*"$DEVICE"*"UNOFFICIAL"*".zip" ]; then
       info "Copying ROM to OTA build dir..."
-      "$DO" cp "$ROM" "$OTABDIR"
+      cp "$ROM" "$OTABDIR"
 
       info "Creating OTA.zip..."
       export MK_OTA_INPUT="$SAUCE"/mokee/FULL
       export MK_OTA_EXTRA="$SAUCE"/mokee/OTA
-      "$DO" ota_all UNOFFICIAL "$DEVICE"
+      ota_all UNOFFICIAL "$DEVICE"
 
       info "Cleaning up..."
-      OLDROMS=$(ls -t "$OTABDIR"/*"$DEVICE"*"UNOFFICIAL"*".zip" | -n head -1)
+      OLDROMS=$(ls -tr "$OTABDIR"/*"$DEVICE"*"UNOFFICIAL.zip" | head -n 1)
       if [[ "$OLDROMS" ]]; then
-        "$DO" rm "$OLDROMS"
+         rm "$OLDROMS"
       fi
 
       OTAN=$(ls -t "$OTAFOLDER"/*"$DEVICE"*"UNOFFICIAL"*".zip" | head -1)
       OTAMD=$(dirname "$OTAN")/md5/$(basename "$OTAN").md5sum
-    else
-      warn "No existing ROM to build OTA package, just copying ROM for next time"
-      "$DO" cp "$ROM" "$OTABDIR"
-    fi
   fi
 
   if [ "$FTP" = y ]; then
     info "Uploading ROM, MD5SUM and, if you made an OTA package, that as well..."
-    "$DO" curl -v -T "$ROM" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPFULL"/"$DEVICE"/
-    "$DO" curl -v -T "$ROMMD" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPFULL"/"$DEVICE"/md5/
+     curl -v -T "$ROM" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPFULL"/"$DEVICE"/
+     curl -v -T "$ROMMD" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPFULL"/"$DEVICE"/md5/
 
     if [ "$OTA" = y ] && [ "$OTAF" = n ]; then
-      "$DO" curl -v -T "$OTAN" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPOTA"/"$DEVICE"/
-      "$DO" curl -v -T "$OTAMD" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPOTA"/"$DEVICE"/md5/
+       curl -v -T "$OTAN" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPOTA"/"$DEVICE"/
+       curl -v -T "$OTAMD" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPOTA"/"$DEVICE"/md5/
     fi
   fi
 
  
   if [ "$MOVE" = y ]; then
-    info "Moving things to $STORAGE directory"
-    "$DO" mkdir -p "$STORAGE"/"$DEVICE"/md5 &&
-    "$DO" mv "$ROM" "$STORAGE"/"$DEVICE" &&
-    "$DO" mv "$ROMMD" "$STORAGE"/"$DEVICE"/md5
+    info "Moving things to $STORAGE"
+     mkdir -p "$STORAGE"/"$DEVICE"/md5 &&
+     mv "$ROM" "$STORAGE"/"$DEVICE" &&
+     mv "$ROMMD" "$STORAGE"/"$DEVICE"/md5
 
     if [[ "$OTA" = y && "$OTAF" = n ]]; then
-      "$DO" mkdir -p "$STORAGE"/"$DEVICE"/OTA/md5 &&
-      "$DO" mv "$OTAN" "$STORAGE"/"$DEVICE"/OTA &&
-      "$DO" mv "$OTAMD" "$STORAGE"/"$DEVICE"/OTA/md5
+       mkdir -p "$STORAGE"/"$DEVICE"/OTA/md5 &&
+       mv "$OTAN" "$STORAGE"/"$DEVICE"/OTA &&
+       mv "$OTAMD" "$STORAGE"/"$DEVICE"/OTA/md5
 
-      "$DO" rm -rf out/target/OTA
+       rm -rf out/target/OTA
     fi
   fi
 
