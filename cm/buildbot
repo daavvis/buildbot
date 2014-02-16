@@ -29,7 +29,7 @@ QCLEAN=n
 CLEAN=n
 OTA=y
 FTP=n
-FTPHOST=mokeedev.com
+FTPHOST=
 FTPUSER=
 FTPPASS=
 FTPFULL=FULL/UNOFFICIAL
@@ -352,7 +352,7 @@ fi
 cd "$SAUCE"
  . build/envsetup.sh
  croot
- lunch mk_"${DEVICE}"-userdebug
+ lunch cm_"${DEVICE}"-userdebug
   ROMFOLDER="$SAUCE"/out/target/product/"$DEVICE"
   OTABDIR="$SAUCE"/mokee/FULL/UNOFFICIAL/"$DEVICE"
   OTAFOLDER="$SAUCE"/mokee/OTA/UNOFFICIAL/"$DEVICE"
