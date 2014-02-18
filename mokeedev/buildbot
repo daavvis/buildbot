@@ -22,7 +22,7 @@ SAUCE=~/mkkk
 MOVE=y
 STORAGE=/media/daavvis/storage/1foronlyme/4.4.2
 SYNC=n
-J=16
+J=32
 BP=y
 CCACHE=y
 QCLEAN=n
@@ -60,7 +60,7 @@ echo ""
 echo "                            opensource"
 echo "" 
 echo ""
-echo "$txtrst"
+echo -e "$txtrst"
 function err {
   echo "$txtrst${red}$*$txtrst" >&2
 }
@@ -293,12 +293,6 @@ if [[ "${#DEVICES[@]}" = 0 ]]; then
 fi
 TST=$(date +%s)
 
-  for DEVICE in ${DEVICES[@]}; do
-
-DST=$(date +%s)
-    
-OTABDIR=$SAUCE/mokee/FULL/UNOFFICIAL/$DEVICE
-
 if [ "$SYNC" = y ]; then
   info "Running repo sync..."
     repo sync -j"$J"
@@ -308,6 +302,12 @@ if [ "$CLEAN" = y ]; then
   info "Running make clean..."
     make clean
 fi
+
+  for DEVICE in ${DEVICES[@]}; do
+
+DST=$(date +%s)
+    
+OTABDIR=$SAUCE/mokee/FULL/UNOFFICIAL/$DEVICE
 
 	if [ "$OTA" = "y" ] && [ ! -f "$OTABDIR"/*".zip" ];then
 		OTASU1=$(askyn "YOU ARE NOT SET UP FOR OTA BUILDS, DO YOU WANT ME TO SET IT UP?" "$OTASU1")
@@ -368,7 +368,7 @@ cd "$SAUCE"
   fi
 
   info "Running mka bacon..."
-    mka bacon
+    mka -j3 bacon
 
   ROM=$(ls -t "$ROMFOLDER"/*"$DEVICE"*"UNOFFICIAL.zip" | head -1)
   ROMMD="$ROM".md5sum
