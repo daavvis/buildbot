@@ -17,24 +17,25 @@
 # by daavvis and lee_w via xda
 # inspired by Shane Faulkner
 
+clear
+
 # Defaults
-SAUCE=~/mkkk
+SAUCE=/hdd/mkkk
 MOVE=y
-STORAGE=/media/daavvis/storage/1foronlyme/4.4.2
+STORAGE=/storage/1foronlyme/4.4.2
 SYNC=n
 J=32
 BP=y
 CCACHE=y
 QCLEAN=n
 CLEAN=n
-OTA=y
+OTA=n
 FTP=n
 FTPHOST=mokeedev.com
 FTPUSER=
 FTPPASS=
 FTPFULL=FULL/UNOFFICIAL
 FTPOTA=OTA/UNOFFICIAL
-DO=
 
 readonly red=$(tput setaf 1) #  red
 readonly grn=$(tput setaf 2) #  green
@@ -50,7 +51,6 @@ readonly bldcya=$txtbld$cya  #  cyan
 readonly txtrst=$(tput sgr0) # Reset
 
 echo -e "$bldylw"
-clear
 echo "              __  ___      __ __"        
 echo "             /  |/  /___  / //_/__  ___" 
 echo "            / /|_/ / __ \/ ,< / _ \/ _ \ "
@@ -243,30 +243,77 @@ if [[ $GO != y ]]; then
     fi
   done
 
-  SYNC=$(askyn "Should we sync repositories before build" $SYNC)
-	if [ "$SYNC" = "y" ]; then
+  if SYNC=$(askyn "Should we sync repositories before build" $SYNC); then
 		J=$(ask "what -j level should we use? 1 for slow internet 16 for fast..." $J)
-	fi
+  fi
   CCACHE=$(askyn "Do you want to use ccache" ${CCACHE:-y})
   BP=$(askyn "Do you want to remove build.prop before the build (recomended)" $BP)
   QCLEAN=$(askyn "Do you want to run mka installclean first (quick clean build)" $QCLEAN)
   CLEAN=$(askyn "Do you want to run make clean first (slow clean build, will delete entire contents of out folder..." $CLEAN)
-  OTA=$(askyn "Do you want to make an ota package" $OTA)
+  if OTA=$(askyn "Do you want to make an ota package for chosen devices?" $OTA); then
+  declare -i i=${#OTABO[*]}
+     for DEVICE in ${DEVICES[@]}; do
+	OTABDIR=$SAUCE/mokee/FULL/UNOFFICIAL/$DEVICE
+  	if OTABUILD=$(askyn "Do you want to make an ota package for "$DEVICE"?" $OTABUILD); then
+		if [ ! -f "$OTABDIR"/*".zip" ]; then
+		   err "YOU ARE NOT SET UP FOR "$DEVICE" OTA BUILDS"
+		   err "SETTING UP BUILD FOLDER"
+		   mkdir -p "$OTABDIR"
+			while :; do
+		   	   USRSTR=$(ask "Enter the path to your "$DEVICE" rom storage directory:" "$USRSTR")
+			   OLDIE=$(ls -t "$USRSTR"/*"$DEVICE"*"UNOFFICIAL.zip" | head -1)
+      			   until [ -e "$OLDIE" ]; do
+          			err ""$USRSTR" DOES NOT HAVE ANY ROMS FOR "$DEVICE" INSIDE!!"
+        			USRSTR=$(ask "Enter the path to your "$DEVICE" rom storage directory:" "$USRSTR")
+				OLDIE=$(ls -t "$USRSTR"/*"$DEVICE"*"UNOFFICIAL.zip" | head -1)
+     			   done
+		   	cp "$OLDIE" "$OTABDIR"
+		   	OTABO[$((i++))]=$DEVICE
+		   	echo "Added to OTA build list: "${OTABO[@]}""
+			break
+			done
+		elif [ -f "$OTABDIR"/*".zip" ];then
+		   OTABO[$((i++))]=$DEVICE
+		   echo "Added to OTA build list: "${OTABO[@]}""
+		fi
+	else
+	   err "NOT BUILDING OTA FOR "$DEVICE"..."
+
+  	fi
+     done
+  echo "Final OTA build list: "${OTABO[*]}""
+  fi
 
   while :; do
     if FTP=$(askyn "Do you want to enable FTP uploading" "$FTP"); then
           FTPUSER=$(ask "What is your mokeedev.com username:" "$FTPUSER")
           FTPPASS=$(ask -s "What is your mokeedev.com password:" "$FTPPASS")
-          FTPUSERPASS=""$FTPUSER":"$FTPPASS"@"
           info "Checking access to "$FTPHOST""
-          if curl -# ftp://"$FTPUSERPASS""$FTPHOST"/ >/dev/null; then
-            info "Success!"
-            break
-          fi
+          until curl -# ftp://"$FTPUSER":"$FTPPASS"@"$FTPHOST"/ >/dev/null; do
+		err "User Name and or Password not correct..."
+		FTPUSER=$(ask "What is your mokeedev.com username:" "$FTPUSER")
+          	FTPPASS=$(ask -s "What is your mokeedev.com password:")
+          	info "Checking access to "$FTPHOST""
+	  done
+          info "Success!"
+	  FTPUSERPASS=""$FTPUSER":"$FTPPASS"@"
+          break
     else
       break
    fi
    done
+  if [ "$FTP" = y ]; then
+  declare -i i=${#FTPUL[*]}
+	for DEVICE in ${DEVICES[@]}; do
+	   if FTPUP=$(askyn "Do you want to upload "$DEVICE"?" $FTPUP); then
+		FTPUL[$((i++))]=$DEVICE
+		echo "Added to FTP upload list: "${FTPUL[@]}""
+	   else
+		err "NOT UPLOADING "$DEVICE"..."
+	   fi	  
+	done
+  echo "Final FTP upload list: "${FTPUL[@]}""
+  fi
 
   if [[ "$MOVE" = y && ! -d "$STORAGE" ]]; then
     err "Storage directory '"$STORAGE"' doesn't exist"
@@ -276,22 +323,24 @@ if [[ $GO != y ]]; then
 fi
 
 cat <<!EOD
-MOVE=$MOVE
-STORAGE=$STORAGE
+DEVICES=${DEVICES[@]}
+OTA=${OTABO[@]}
+FTP=${FTPUL[@]}
 SYNC=$SYNC
 CCACHE=$CCACHE
 BP=$BP
 QCLEAN=$QCLEAN
 CLEAN=$CLEAN
-OTA=$OTA
-FTP=$FTP
-DEVICES=${DEVICES[@]}"
+MOVE=$MOVE
+STORAGE=$STORAGE
 !EOD
 
 if [[ "${#DEVICES[@]}" = 0 ]]; then
   err "Nothing to build"
 fi
 TST=$(date +%s)
+
+cd "$SAUCE"
 
 if [ "$SYNC" = y ]; then
   info "Running repo sync..."
@@ -306,38 +355,6 @@ fi
   for DEVICE in ${DEVICES[@]}; do
 
 DST=$(date +%s)
-    
-OTABDIR=$SAUCE/mokee/FULL/UNOFFICIAL/$DEVICE
-
-	if [ "$OTA" = "y" ] && [ ! -f "$OTABDIR"/*".zip" ];then
-		OTASU1=$(askyn "YOU ARE NOT SET UP FOR OTA BUILDS, DO YOU WANT ME TO SET IT UP?" "$OTASU1")
-		if [ "$OTASU1" = "y" ]; then
-			err "SETTING UP BUILD FOLDER"
-			mkdir -p "$OTABDIR"
-			OTASU2=y
-		else
-			err "NOT BUILDING OTA"
-			OTAF=y
-		fi		
-	fi
-
-	if [ "$OTASU2" = y ]; then
-		while :; do
-		USRSTR=$(ask "Enter the path to your old rom storage directory:" "$USRSTR")
-			OLDIE=$(ls -t "$USRSTR"/*"$DEVICE"*"UNOFFICIAL.zip" | head -1)
-      			until [ -e "$OLDIE" ]; do
-          			err ""$USRSTR" DOES NOT HAVE ANY ROMS FOR THIS DEVICE INSIDE!!"
-        			USRSTR=$(ask "Enter the path to your storage directory:" "$USRSTR")
-				OLDIE=$(ls -t "$USRSTR"/*"$DEVICE"*"UNOFFICIAL.zip" | head -1)
-     			done
-		cp "$OLDIE" "$OTABDIR"
-		OTAF=n
-		break
-		done
-    	fi
-	if [ "$OTA" = "y" ] && [ -f "$OTABDIR"/*".zip" ];then
-		OTAF=n
-	fi
 
 cd "$SAUCE" || exit 3
 
@@ -353,9 +370,6 @@ cd "$SAUCE"
  . build/envsetup.sh
  croot
  lunch mk_"${DEVICE}"-userdebug
-  ROMFOLDER="$SAUCE"/out/target/product/"$DEVICE"
-  OTABDIR="$SAUCE"/mokee/FULL/UNOFFICIAL/"$DEVICE"
-  OTAFOLDER="$SAUCE"/mokee/OTA/UNOFFICIAL/"$DEVICE"
 
   if [ "$BP" = y ]; then
     info "Removing build.prop"
@@ -370,57 +384,95 @@ cd "$SAUCE"
   info "Running mka bacon..."
     mka -j3 bacon
 
-  ROM=$(ls -t "$ROMFOLDER"/*"$DEVICE"*"UNOFFICIAL.zip" | head -1)
-  ROMMD="$ROM".md5sum
-
-  if [ "$OTA" = y ] && [ "$OTAF" = "n" ]; then
-      info "Copying ROM to OTA build dir..."
-      cp "$ROM" "$OTABDIR"
-
-      info "Creating OTA.zip..."
-      export MK_OTA_INPUT="$SAUCE"/mokee/FULL
-      export MK_OTA_EXTRA="$SAUCE"/mokee/OTA
-      ota_all UNOFFICIAL "$DEVICE"
-
-      info "Cleaning up..."
-      OLDROMS=$(ls -tr "$OTABDIR"/*"$DEVICE"*"UNOFFICIAL.zip" | head -n 1)
-      if [[ "$OLDROMS" ]]; then
-         rm "$OLDROMS"
-      fi
-
-      OTAN=$(ls -t "$OTAFOLDER"/*"$DEVICE"*"UNOFFICIAL"*".zip" | head -1)
-      OTAMD=$(dirname "$OTAN")/md5/$(basename "$OTAN").md5sum
-  fi
-
-  if [ "$FTP" = y ]; then
-    info "Uploading ROM, MD5SUM and, if you made an OTA package, that as well..."
-     curl -v -T "$ROM" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPFULL"/"$DEVICE"/
-     curl -v -T "$ROMMD" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPFULL"/"$DEVICE"/md5/
-
-    if [ "$OTA" = y ] && [ "$OTAF" = n ]; then
-       curl -v -T "$OTAN" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPOTA"/"$DEVICE"/
-       curl -v -T "$OTAMD" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPOTA"/"$DEVICE"/md5/
-    fi
-  fi
-
- 
-  if [ "$MOVE" = y ]; then
-    info "Moving things to $STORAGE"
-     mkdir -p "$STORAGE"/"$DEVICE"/md5 &&
-     mv "$ROM" "$STORAGE"/"$DEVICE" &&
-     mv "$ROMMD" "$STORAGE"/"$DEVICE"/md5
-
-    if [[ "$OTA" = y && "$OTAF" = n ]]; then
-       mkdir -p "$STORAGE"/"$DEVICE"/OTA/md5 &&
-       mv "$OTAN" "$STORAGE"/"$DEVICE"/OTA &&
-       mv "$OTAMD" "$STORAGE"/"$DEVICE"/OTA/md5
-
-       rm -rf out/target/OTA
-    fi
-  fi
-
   DET=$(date +%s)
   info "Done building "$DEVICE" in $(((DET-DST)/60)) minutes $(((DET-DST)%60)) seconds"
 done
+
+if [ "$OTA" = y ]; then
+  for OTAO in ${OTABO[@]}; do
+  ROMFOLDER="$SAUCE"/out/target/product/"$OTAO"
+  ROM=$(ls -t "$ROMFOLDER"/*"$OTAO"*"UNOFFICIAL.zip" | head -1)
+  ROMMD="$ROM".md5sum
+  OTABDIR=$SAUCE/mokee/FULL/UNOFFICIAL/$OTAO
+  OTAFOLDER="$SAUCE"/mokee/OTA/UNOFFICIAL/"$OTAO"
+      info "Copying "$OTAO" ROM to OTA build dir..."
+      cp "$ROM" "$OTABDIR"
+
+      info "Creating "$OTAO" OTA.zip..."
+      export MK_OTA_INPUT="$SAUCE"/mokee/FULL
+      export MK_OTA_EXTRA="$SAUCE"/mokee/OTA
+      ota_all UNOFFICIAL "$OTAO"
+      OTAN=$(ls -t "$OTAFOLDER"/*"$OTAO"*"UNOFFICIAL"*".zip" | head -1)
+      OTAMD=$(dirname "$OTAN")/md5/$(basename "$OTAN").md5sum
+      TEMP=$OTAFOLDER/temp
+      TEMPMD=$OTAFOLDER/temp/md5
+	if [ "$FTP" = y ]; then
+	   mkdir -p "$TEMPMD"
+	   cp "$OTAN" "$TEMP"
+	   cp "$OTAMD" "$TEMPMD"
+	fi	   
+      info "Cleaning up..."
+      OLDROMS=$(ls -tr "$OTABDIR"/*"$OTAO"*"UNOFFICIAL.zip" | head -n 1)
+      if [[ "$OLDROMS" ]]; then
+         rm "$OLDROMS"
+      fi
+  done
+fi
+
+if [ "$FTP" = y ]; then
+   for FTPD in ${FTPUL[@]}; do
+   ROMFOLDER="$SAUCE"/out/target/product/"$FTPD"
+   ROM=$(ls -t "$ROMFOLDER"/*"$FTPD"*"UNOFFICIAL.zip" | head -1)
+   ROMMD="$ROM".md5sum
+   OTAFOLDER="$SAUCE"/mokee/OTA/UNOFFICIAL/"$FTPD"
+   TEMP=$OTAFOLDER/temp
+    info "Uploading "$FTPD"..."
+     curl -v -T "$ROM" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPFULL"/"$FTPD"/
+     curl -v -T "$ROMMD" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPFULL"/"$FTPD"/md5/
+	if [ -d "$TEMP" ]; then
+	   OTAN=$(ls -t "$TEMP"/*"$FTPD"*"UNOFFICIAL"*".zip" | head -1)
+	   OTAMD=$(dirname "$TEMP")/md5/$(basename "$OTAN").md5sum
+	   curl -v -T "$OTAN" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPOTA"/"$FTPD"/
+	   curl -v -T "$OTAMD" ftp://"$FTPUSERPASS""$FTPHOST"/"$FTPOTA"/"$FTPD"/md5/
+	fi
+   done
+fi
+ 
+if [ "$MOVE" = y ]; then
+  for DEVICE in ${DEVICES[@]}; do
+  ROMFOLDER="$SAUCE"/out/target/product/"$DEVICE"
+  ROM=$(ls -t "$ROMFOLDER"/*"$DEVICE"*"UNOFFICIAL.zip" | head -1)
+  ROMMD="$ROM".md5sum
+
+    info "Moving "$DEVICE" things to "$STORAGE""
+     mkdir -p "$STORAGE"/"$DEVICE"/md5 &&
+     mv "$ROM" "$STORAGE"/"$DEVICE" &&
+     mv "$ROMMD" "$STORAGE"/"$DEVICE"/md5
+  done
+  for OTAO in ${OTABO[@]}; do
+    OTAFOLDER="$SAUCE"/mokee/OTA/UNOFFICIAL/"$OTAO"
+    OTAN=$(ls -t "$OTAFOLDER"/*"$OTAO"*"UNOFFICIAL"*".zip" | head -1)
+    OTAMD=$(dirname "$OTAN")/md5/$(basename "$OTAN").md5sum
+	if [ -e "$OTAN" ]; then
+         mkdir -p "$STORAGE"/"$DEVICE"/OTA/md5
+         mv "$OTAN" "$STORAGE"/"$DEVICE"/OTA
+         mv "$OTAMD" "$STORAGE"/"$DEVICE"/OTA/md5
+	fi
+  done
+  rm -rf out/target/OTA
+fi
+if [[ "$FTP" = y && "$OTA" = y ]]; then
+   for OTAO in ${OTABO[@]}; do
+	OTAFOLDER="$SAUCE"/mokee/OTA/UNOFFICIAL/"$OTAO"
+	TEMP=$OTAFOLDER/temp
+	TEMPMD=$OTAFOLDER/temp/md5
+	if [ -d "$TEMP" ]; then
+	   info "Cleaning up "$OTAO"...."
+	   rm -rf "$TEMP"
+	   rm -rf "$TEMPMD"
+	fi
+   done
+fi
+
 TET=$(date +%s)
 info "All done in $(((TET-TST)/60)) minutes $(((TET-TST)%60)) seconds"
